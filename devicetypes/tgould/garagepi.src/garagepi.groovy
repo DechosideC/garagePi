@@ -26,6 +26,9 @@ preferences {
         input("port", "string", title:"Port", description: "8000", defaultValue: 8000 , required: true, displayDuringSetup: true)
         input("username", "string", title:"Username", description: "webiopi", required: true, displayDuringSetup: true)
         input("password", "password", title:"Password", description: "Password", required: true, displayDuringSetup: true)
+        input("door1Name", "string", title:"Door 1 Name", description: "Tundra or Left", required: true, displayDuringSetup: true)
+        input("door2Name", "string", title:"Door 2 Name", description: "Tundra or Left", required: true, displayDuringSetup: true)
+        input("door3Name", "string", title:"Door 3 Name", description: "Tundra or Left", required: true, displayDuringSetup: true)
         input("door1gpio", "string", title:"Door 1 GPIO", description: "21", required: true, displayDuringSetup: true)
         input("door2gpio", "string", title:"Door 2 GPIO", description: "21", required: true, displayDuringSetup: true)
         input("door3gpio", "string", title:"Door 3 GPIO", description: "21", required: true, displayDuringSetup: true)
@@ -49,7 +52,7 @@ metadata {
         command "restart"
         command "push1"
         command "push2"
-        command "push4"
+        command "push3"
         command "ledOn"
         command "ledOff"
 	}
@@ -65,12 +68,12 @@ metadata {
 		}
         
         standardTile("door1", "device.door1", width: 2, height: 2, canChangeIcon: true) {
-			state "on", label:'Pickup', action:"push1", icon:"st.doors.garage.garage-opening", backgroundColor:"#79b821"
-			state "off", label:'Pickup', action:"push1", icon:"st.doors.garage.garage-closing", backgroundColor:"#ffffff"
+			state "on", label:"Pickup", action:"push1", icon:"st.doors.garage.garage-opening", backgroundColor:"#79b821"
+			state "off", label:"Pickup", action:"push1", icon:"st.doors.garage.garage-closing", backgroundColor:"#ffffff"
 		}
         standardTile("door2", "device.door2", width: 2, height: 2, canChangeIcon: true) {
-			state "on", label:'Tundra', action:"push2", icon:"st.doors.garage.garage-opening", backgroundColor:"#79b821"
-			state "off", label:'Tundra', action:"push2", icon:"st.doors.garage.garage-closing", backgroundColor:"#ffffff"
+			state "on", label:"Tundra", action:"push2", icon:"st.doors.garage.garage-opening", backgroundColor:"#79b821"
+			state "off", label:"Tundra", action:"push2", icon:"st.doors.garage.garage-closing", backgroundColor:"#ffffff"
 		}
         standardTile("door3", "device.door3", width: 2, height: 2, canChangeIcon: true) {
 			state "on", label:'Sequoia', action:"push3", icon:"st.doors.garage.garage-opening", backgroundColor:"#79b821"
@@ -149,27 +152,42 @@ metadata {
 
 // ------------------------------------------------------------------
 
-// parse events into attributes
-def parse(String description) {
-    def map = [:]
-    def descMap = parseDescriptionAsMap(description)
-    log.debug descMap
-    def body = new String(descMap["body"].decodeBase64())
-    log.debug "body: ${body}"
 
-	if (body?.startsWith("{")) {
+def parse(description) {
+    def msg = parseLanMessage(description)
+
+    def headersAsString = msg.header // => headers as a string
+    def headerMap = msg.headers      // => headers as a Map
+    def body = msg.body              // => request body as a string
+    def status = msg.status          // => http status code of the response
+    def json = msg.json              // => any JSON included in response body, as a data structure of lists and maps
+    def xml = msg.xml                // => any XML included in response body, as a document tree structure
+    def data = msg.data              // => either JSON or XML in response body (whichever is specified by content-type header in response)
+	//log.debug "Status: ${status}"
+    //log.debug "Body: ${body}"
+    //log.debug "JSON: ${json}"
+    //log.debug "Data: ${data}"
+    
+    if (status == 200){
+        log.debug "Computer is up"
+        sendEvent(name: "switch", value: "on")
+        sendEvent(name: "door1", value: "on", isStateChange: true)
+        sendEvent(name: "door2", value: "on", isStateChange: true)
+        sendEvent(name: "door3", value: "on", isStateChange: true)
+    }
+    
+    if (body?.startsWith("{")) {
         def slurper = new JsonSlurper()
         def result = slurper.parseText(body)
-        log.debug "result: ${result}"
-        if (result){
-            log.debug "Computer is up"
-            sendEvent(name: "switch", value: "on")
-        }
+        //log.debug "result: ${result}"
+        
         if (result.containsKey("cpu_temp")) {
+            log.debug "cpu_temp: ${cpu_temp}"
             sendEvent(name: "temperature", value: result.cpu_temp)
         }
 
         if (result.containsKey("cpu_perc")) {
+            log.debug "cpu_perc: ${result.cpu_perc}"
             sendEvent(name: "cpuPercentage", value: result.cpu_perc)
         }
 
@@ -181,19 +199,10 @@ def parse(String description) {
             log.debug "disk_usage: ${result.disk_usage}"
             sendEvent(name: "diskUsage", value: result.disk_usage)
         }
-        if (result.containsKey("GPIO")) {
-            //log.debug "GPIO: ${result.GPIO}"
-            //def setGPIOs = [ledgpio, door1gpio, door2gpio, door3gpio]
-            //log.debug setGPIOs
-            result.GPIO.each { item ->
-                log.debug item.key + ": " + item.value.value
-            }
-            //def gpio = result.GPIO.7
-        	//log.debug "gpio: ${gpio}"
-            //sendEvent(name: "GPIO", value: result.disk_usage)
-        }
     }
 }
+
+
 
 // handle commands
 def poll() {
@@ -203,48 +212,39 @@ def poll() {
 }
 
 def refresh() {
-	sendEvent(name: "switch", value: "off")
-	log.debug "Executing 'refresh' ledgpio: ${ledgpio}"
+	log.debug "Executing 'refresh'"
+    sendEvent(name: "switch", value: "off", isStateChange: true)
     getRPiData()
-    //getGPIO()
 }
 
 def restart() {
 	log.debug "Restart was pressed"
-    sendEvent(name: "switch", value: "off")
+    sendEvent(name: "switch", value: "off", isStateChange: true)
     def uri = "/macros/reboot"
     postAction(uri, "POST")
 }
 
 def push1() {
-    push(door1gpio, "Pickup")
+    push("door1", door1gpio, door1Name)
 }
 
 def push2() {
-    push(door2gpio, "Tundra")	
+    push("door2", door2gpio, door2Name)	
 }
 
 def push3() {
-    push(door3gpio, "Sequoia")	
+    push("door3", door3gpio, door3Name)
 }
 
-def push(GPIO, Door) {
-	log.debug "Pushed ${GPIO} | ${Door}"
-    //sendEvent(name: GPIO, value: "off")
+def push(device, GPIO, Name) {
+	log.debug "Pushed ${GPIO} | ${Name}"
     def uri = "/GPIO/" + GPIO + "/value/0"
     log.debug "URI: ${uri}"
     postAction(uri, "POST")
-    //runIn(1, turnOff, [data: [gpio: "${GPIO}"]])
+    //sendEvent(name: device, value: "on", isStateChange: true)
 }
 
-/* Implemented the switch release in a python script in webiopi
-def turnOff(data) {
-    log.debug "Up ${data.gpio}"
-    //sendEvent(name: data.gpio, value: "on")
-    def uri = "/GPIO/" + data.gpio + "/value/1";
-    log.debug "URI: ${uri}"
-	postAction(uri, , "POST")
-}*/
+// Implemented the switch release in a python script in webiopi
 
 def ledOn() {
 	sendEvent(name: "led", value: "on")
@@ -262,12 +262,13 @@ def ledOff() {
 
 // Get CPU percentage reading
 private getRPiData() {
-	def uri = "/macros/getData"
+	log.debug "GET Macro Raspberry Pi Stats"
+    def uri = "/macros/getData"
     postAction(uri, "POST")
 }
 
 private getGPIO() {
-	log.debug "Button Status"
+	log.debug "GET GPIO Status"
     def uri = "/*"
     postAction(uri, "GET")
 }
@@ -284,10 +285,10 @@ private postAction(uri, method){
     method: method,
     path: uri,
     headers: headers
-  )//,delayAction(1000), refresh()]
+  )
   log.debug("Executing hubAction on " + getHostAddress())
   log.debug hubAction
-  hubAction    
+  return hubAction    
 }
 
 // ------------------------------------------------------------------
