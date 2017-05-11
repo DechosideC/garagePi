@@ -22,28 +22,30 @@
 import groovy.json.JsonSlurper
 
 preferences {
-        input("ip", "string", title:"IP Address", description: "192.168.1.150", required: true, displayDuringSetup: true)
-        input("port", "string", title:"Port", description: "8000", defaultValue: 8000 , required: true, displayDuringSetup: true)
-        input("username", "string", title:"Username", description: "webiopi", required: true, displayDuringSetup: true)
-        input("password", "password", title:"Password", description: "Password", required: true, displayDuringSetup: true)
-        input("door1Name", "string", title:"Door 1 Name", description: "Tundra or Left", required: true, displayDuringSetup: true)
-        input("door2Name", "string", title:"Door 2 Name", description: "Tundra or Left", required: true, displayDuringSetup: true)
-        input("door3Name", "string", title:"Door 3 Name", description: "Tundra or Left", required: true, displayDuringSetup: true)
-        input("door1gpio", "string", title:"Door 1 GPIO", description: "21", required: true, displayDuringSetup: true)
-        input("door2gpio", "string", title:"Door 2 GPIO", description: "21", required: true, displayDuringSetup: true)
-        input("door3gpio", "string", title:"Door 3 GPIO", description: "21", required: true, displayDuringSetup: true)
-        input("ledgpio", "string", title:"LED GPIO", description: "7", required: true, displayDuringSetup: true)
+	input("ip", "string", title:"IP Address", description: "192.168.1.150", required: true, displayDuringSetup: true)
+	input("port", "string", title:"WebIOPi Port", description: "8000", defaultValue: 8000 , required: true, displayDuringSetup: true)
+	input("motionPort", "string", title:"Motion Port", description: "8081", defaultValue: 8081 , required: true, displayDuringSetup: true)
+	input("username", "string", title:"Username", description: "webiopi", required: true, displayDuringSetup: true)
+	input("password", "password", title:"Password", description: "Password", required: true, displayDuringSetup: true)
+	input("door1Name", "string", title:"Door 1 Name", description: "Tundra or Left", required: true, displayDuringSetup: true)
+	input("door2Name", "string", title:"Door 2 Name", description: "Tundra or Left", required: true, displayDuringSetup: true)
+	input("door3Name", "string", title:"Door 3 Name", description: "Tundra or Left", required: true, displayDuringSetup: true)
+	input("door1gpio", "string", title:"Door 1 GPIO", description: "21", required: true, displayDuringSetup: true)
+	input("door2gpio", "string", title:"Door 2 GPIO", description: "21", required: true, displayDuringSetup: true)
+	input("door3gpio", "string", title:"Door 3 GPIO", description: "21", required: true, displayDuringSetup: true)
+	input("ledgpio", "string", title:"LED GPIO", description: "1", required: true, displayDuringSetup: true)
 }
 
 metadata {
 	definition (name: "garagePi", namespace: "tgould", author: "Todd Gould") {
-		capability "Polling"
-		capability "Refresh"
-		capability "Temperature Measurement"
+    	capability "Polling"
+        capability "Refresh"
+        capability "Temperature Measurement"
         capability "Switch"
         capability "Momentary"
         capability "Sensor"
-        capability "Actuator"        
+        capability "Actuator"
+		capability "Image Capture"
         
         attribute "cpuPercentage", "string"
         attribute "memory", "string"
@@ -54,7 +56,7 @@ metadata {
         command "push2"
         command "push3"
         command "ledOn"
-        command "ledOff"
+        command "ledOff" 
 	}
 
 	simulator {
@@ -62,7 +64,19 @@ metadata {
 	}
 
 	tiles (scale: 2){
-		standardTile("button", "device.switch", width: 6, height: 4, canChangeIcon: true) {
+		standardTile("image", "device.image", width: 6, height: 4, canChangeIcon: false, inactiveLabel: true, canChangeBackground: true) {
+        	state "default", label: "", action: "", icon: "st.camera.dropcam", backgroundColor: "#FFFFFF"
+    	}
+
+    	carouselTile("cameraDetails", "device.image", width: 2, height: 2) { }
+
+	    standardTile("take", "device.image", width: 2, height: 2, canChangeIcon: false, inactiveLabel: true, canChangeBackground: false) {
+        	state "take", label: "Take", action: "Image Capture.take", icon: "st.camera.dropcam", backgroundColor: "#FFFFFF", nextState:"taking"
+        	state "taking", label:'Taking', action: "", icon: "st.camera.dropcam", backgroundColor: "#00A0DC"
+        	state "image", label: "Take", action: "Image Capture.take", icon: "st.camera.dropcam", backgroundColor: "#FFFFFF", nextState:"taking"
+    	}
+        
+        standardTile("button", "device.switch", width: 2, height: 2, canChangeIcon: true) {
 			state "off", label: 'Off', icon: "st.Electronics.electronics18", backgroundColor: "#ffffff", nextState: "on"
 			state "on", label: 'On', icon: "st.Electronics.electronics18", backgroundColor: "#79b821", nextState: "off"
 		}
@@ -145,13 +159,10 @@ metadata {
         	state "default", action:"restart", label: "Restart", displayName: "Restart", icon: "st.samsung.da.RC_ic_power", backgroundColor: "#e86d13"
         }
         
-        main "button"
-        details(["button", "door1", "door2", "door3", "temperature", "cpuPercentage", "memory", "led", "refresh", "restart"])
+        main "image"
+        details(["image", "cameraDetails", "take", "button", "door1", "door2", "door3", "temperature", "cpuPercentage", "memory", "led", "refresh", "restart"])
     }
 }
-
-// ------------------------------------------------------------------
-
 
 def parse(description) {
     def msg = parseLanMessage(description)
@@ -202,8 +213,6 @@ def parse(description) {
     }
 }
 
-
-
 // handle commands
 def poll() {
 	log.debug "Executing 'poll'"
@@ -243,7 +252,6 @@ def push(device, GPIO, Name) {
     postAction(uri, "POST")
     //sendEvent(name: device, value: "on", isStateChange: true)
 }
-
 // Implemented the switch release in a python script in webiopi
 
 def ledOn() {
@@ -260,6 +268,11 @@ def ledOff() {
     postAction(uri, "POST")
 }
 
+def take() {
+ log.debug "In Take"
+ // have to figure this out.
+}
+
 // Get CPU percentage reading
 private getRPiData() {
 	log.debug "GET Macro Raspberry Pi Stats"
@@ -267,12 +280,12 @@ private getRPiData() {
     postAction(uri, "POST")
 }
 
+//Get Every GPIO pin function and state: turned out to be useless
 private getGPIO() {
 	log.debug "GET GPIO Status"
     def uri = "/*"
     postAction(uri, "GET")
 }
-// ------------------------------------------------------------------
 
 private postAction(uri, method){
   setDeviceNetworkId(ip, port)  
@@ -291,10 +304,7 @@ private postAction(uri, method){
   return hubAction    
 }
 
-// ------------------------------------------------------------------
 // Helper methods
-// ------------------------------------------------------------------
-
 def parseDescriptionAsMap(description) {
 	description.split(",").inject([:]) { map, param ->
 		def nameAndValue = param.split(":")
